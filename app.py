@@ -1,72 +1,74 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Page Configuration
-st.set_page_config(page_title="Diabetes Prediction - SVM", layout="centered")
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
-# Title
-st.title("🧠 Diabetes Prediction using SVM")
-st.markdown("Upload your dataset to apply SVM classification.")
+# Load dataset
+@st.cache_data
+def load_data():
+    return pd.read_csv("diabetes.csv")
 
-# Upload CSV
-uploaded_file = st.file_uploader("📁 Upload CSV File", type=["csv"])
+df = load_data()
 
-if uploaded_file:
-    # Load Data
-    df = pd.read_csv(uploaded_file)
-    st.subheader("📄 Dataset Preview")
-    st.dataframe(df.head())
+# Sidebar Navigation
+st.sidebar.title("🔎 Navigation")
+page = st.sidebar.radio("Go to", ["Prediction", "Dataset Preview", "Data Visualization"])
 
-    # Check if necessary column exists
-    if "Outcome" not in df.columns:
-        st.error("❌ The dataset must contain an 'Outcome' column as the target.")
-    else:
-        # Basic Info
-        st.write("✅ Dataset Loaded. Shape:", df.shape)
+# Preprocessing
+X = df.drop("Outcome", axis=1)
+y = df["Outcome"]
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
 
-        # Missing Values
-        if df.isnull().sum().sum() > 0:
-            st.warning(
-                "⚠️ Dataset contains missing values. Rows with missing data will be dropped.")
-            df.dropna(inplace=True)
+# Train Model
+model = SVC(kernel='linear', C=1.0, random_state=42)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
 
-        # Split Features and Target
-        X = df.drop("Outcome", axis=1)
-        y = df["Outcome"]
+# Display accuracy in sidebar
+st.sidebar.markdown("### 📊 Model Accuracy")
+st.sidebar.metric("SVM Accuracy", f"{accuracy * 100:.2f}%")
 
-        # Feature Scaling
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
+# Page 1: Prediction
+if page == "Prediction":
+    st.title("🧠 Diabetes Prediction")
 
-        # Train-Test Split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_scaled, y, test_size=0.3, random_state=42)
+    st.markdown("### Enter Patient Data:")
+    input_data = {}
+    for col in X.columns:
+        input_data[col] = st.number_input(col, min_value=0.0, format="%.2f")
 
-        # SVM Model
-        model = SVC(kernel='linear', C=1.0, random_state=42)
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
+    if st.button("Predict"):
+        input_array = np.array([list(input_data.values())])
+        input_scaled = scaler.transform(input_array)
+        prediction = model.predict(input_scaled)[0]
+        result = "Diabetic" if prediction == 1 else "Not Diabetic"
+        st.success(f"🔍 The model predicts: **{result}**")
 
-        # Accuracy
-        acc = accuracy_score(y_test, y_pred)
-        st.metric(label="🎯 Accuracy", value=f"{acc * 100:.2f}%")
+# Page 2: Dataset Preview
+elif page == "Dataset Preview":
+    st.title("📄 Dataset Preview")
+    st.write("Shape of dataset:", df.shape)
+    st.dataframe(df.head(50))
 
-        # Classification Report
-        st.subheader("📊 Classification Report")
-        st.text(classification_report(y_test, y_pred))
+# Page 3: Data Visualization
+elif page == "Data Visualization":
+    st.title("📊 Data Visualization")
 
-        # Confusion Matrix
-        st.subheader("🔍 Confusion Matrix")
-        cm = confusion_matrix(y_test, y_pred)
-        fig, ax = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Purples", ax=ax)
-        ax.set_xlabel("Predicted")
-        ax.set_ylabel("Actual")
-        st.pyplot(fig)
+    st.subheader("Correlation Heatmap")
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(df.corr(), annot=True, cmap="coolwarm", fmt=".2f")
+    st.pyplot(plt.gcf())
+
+    st.subheader("Outcome Count")
+    fig, ax = plt.subplots()
+    sns.countplot(data=df, x="Outcome", ax=ax)
+    st.pyplot(fig)
